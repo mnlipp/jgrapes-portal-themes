@@ -1,0 +1,9 @@
+dependencies {
+	compile 'org.jgrapes:org.jgrapes.portal:0.9.0-SNAPSHOT'
+}
+
+jar {
+    into('META-INF') {
+        from 'resources/META-INF'
+    }
+}

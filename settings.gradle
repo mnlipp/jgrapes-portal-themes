@@ -1,0 +1,8 @@
+rootProject.name = 'JGrapes-Portal-Themes'
+
+for (File file: rootDir.listFiles()) {
+	if (file.isDirectory() && 
+		file.name.startsWith("org.jgrapes.portal.themes.") ) { 
+		include file.name
+	}
+}

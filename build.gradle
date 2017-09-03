@@ -1,0 +1,245 @@
+import java.util.regex.Pattern
+import org.gradle.api.tasks.testing.logging.TestExceptionFormat
+import org.gradle.api.tasks.testing.logging.TestLogEvent
+import aQute.bnd.osgi.Processor
+
+buildscript {
+    repositories {
+        jcenter()
+        mavenCentral()
+		maven { url "https://oss.sonatype.org/content/repositories/snapshots/" }
+        maven { url 'https://jitpack.io' }
+    }
+    dependencies {
+        classpath 'biz.aQute.bnd:biz.aQute.bnd.gradle:3.3.0'
+    }
+}
+
+plugins {
+	id "maven-publish"
+	id "signing"
+	id "org.jdrupes.mdoclet" version "1.0.3"
+}
+
+ext {
+	isTravisBuild = System.getenv().get("TRAVIS") == 'true'
+}
+
+allprojects {
+    repositories {
+        jcenter()
+        mavenCentral()
+		maven { url "https://oss.sonatype.org/content/repositories/snapshots/" }
+        maven { url 'https://jitpack.io' }
+    }
+	
+	// Makes Eclipse-groovy handle *.gradle file properly
+	apply plugin:'groovy'
+}
+
+subprojects {
+
+    apply plugin: 'biz.aQute.bnd.builder'
+	apply plugin: 'maven'
+	apply plugin: 'maven-publish'
+	
+    tasks.withType(Javadoc).all { enabled = false }
+
+	group = 'org.jgrapes'
+	
+	if (project.file("bnd.bnd").exists()) {
+		// The builder plugin doesn't provide access to the bnd properties.
+		// Provide workaround as properties in extra bnd
+		new Processor().withCloseable { processor ->
+			processor.setProperties(project.file('bnd.bnd'))
+			ext.set("bnd", processor.getFlattenedProperties());
+		}
+		
+		// Maintain the version in the bnd.bnd. Else, bndtools won't
+		// generate a proper Bundle-Version header for incrementally 
+		// built jars.
+		version = bnd.base_version + "-SNAPSHOT"
+	}
+
+    dependencies {
+        compileOnly 'org.osgi:org.osgi.annotation:6.0.0'
+        testCompile 'junit:junit:4.12', 'net.jodah:concurrentunit:0.4.2'
+		testCompile "org.spockframework:spock-core:1.1-groovy-2.4-rc-3"
+    }
+
+    // Configure sensible layout
+    sourceSets {
+        main {
+            java {
+                srcDir 'src'
+            }
+            resources {
+                srcDir 'resources'
+            }
+        }
+
+        test {
+            java {
+                srcDir 'test'
+            }
+			groovy {
+				srcDir 'test'
+			}
+            resources {
+                srcDir 'resources'
+            }
+        }
+    }
+    
+    test {
+        testLogging {
+            events TestLogEvent.FAILED,
+                   TestLogEvent.SKIPPED,
+                   TestLogEvent.PASSED,
+                   TestLogEvent.STANDARD_ERROR,
+                   TestLogEvent.STANDARD_OUT
+
+            exceptionFormat TestExceptionFormat.FULL
+
+            showStandardStreams = true
+            showExceptions = true
+            showStackTraces = true
+            showCauses = true
+        }
+		
+		if (isTravisBuild) {
+            maxParallelForks = 2
+            maxHeapSize = '768m'
+        }
+    }
+
+	jar {
+		// This shouldn't be necessary, but with gradle 4.1, it is.
+		version project.version
+    }
+
+	// Additional jars for publishing
+		
+	task sourcesJar(type: Jar) {
+		from sourceSets.main.allJava
+		classifier "sources"
+		// This shouldn't be necessary, but with gradle 4.1, it is.
+		version project.version
+	}
+	
+	task javadocJar(type: Jar) {
+		from (project.rootDir) {
+			include 'README.md'
+		}
+		classifier "javadoc"
+		// This shouldn't be necessary, but with gradle 4.1, it is.
+		version project.version
+	}
+	
+	// MavenPublishing (new), incomplete, works only for local.
+	
+	publishing {
+		
+		publications {
+			mavenJava(MavenPublication) {
+				artifactId = archivesBaseName
+				from components.java
+				artifact sourcesJar
+				artifact javadocJar
+			}
+		}
+	}
+
+	// MavenPublishing (original), still needed for remote 
+
+	uploadArchives {
+		repositories {
+			mavenDeployer {
+				beforeDeployment { MavenDeployment deployment -> signing.signPom(deployment) }
+ 
+				pom.project {
+			
+					name project.name
+					artifactId project.archivesBaseName
+					packaging 'pom'
+					description project.description
+					url 'http://mnlipp.github.io/jgrapes/'
+ 
+					scm {
+						url 'scm:git@github.com:mnlipp/jgrapes.git'
+						connection 'scm:git@github.com:mnlipp/jgrapes.git'
+						developerConnection 'git@github.com:mnlipp/jgrapes.git'
+					}
+ 
+					licenses {
+						license {
+							name 'GPL 3.0'
+							url 'https://www.gnu.org/licenses/gpl-3.0.en.html'
+							distribution 'repo'
+						}
+					}
+ 
+					developers {
+						developer {
+							id 'mnlipp'
+							name 'Michael N. Lipp'
+						}
+					}
+				}
+			
+				artifacts {
+					archives jar
+					archives sourcesJar
+					archives javadocJar
+				}
+
+				repository(url: "https://oss.sonatype.org/service/local/staging/deploy/maven2/") {
+					authentication(userName: project.properties['sonatypeUsername'] ?: "nouser", 
+						password: project.properties['sonatypePassword'] ?: "nopass")
+				}
+				snapshotRepository(url: "https://oss.sonatype.org/content/repositories/snapshots/") {
+					authentication(userName: project.properties['sonatypeUsername'] ?: "nouser", 
+						password: project.properties['sonatypePassword'] ?: "nopass")
+				}
+			}
+		}
+	}
+	
+	afterEvaluate {
+		println "Checking " + project.name
+		if(!project.name.startsWith("org.jgrapes")) {
+			tasks.matching { it.group == "upload" ||
+				it.group == "publishing" }.all {
+				// println "Disabling " + project.name + ":" + it.name 
+				enabled = false
+			}
+		}
+	}
+	
+}
+
+configurations {
+    javadocTaglets
+}
+
+dependencies {
+    javadocTaglets "org.jdrupes.taglets:plantuml-taglet:1.0.+"
+    // javadocTaglets "com.github.mnlipp:jdrupes-taglets:master-SNAPSHOT"
+}
+
+javadoc {
+
+    options.tagletPath = configurations.javadocTaglets.files as List
+    options.taglets = ["org.jdrupes.taglets.plantUml.Taglet"]
+
+    classpath = files(subprojects.collect {project -> 
+        project.sourceSets.main.compileClasspath})
+    source subprojects.collect {project -> project.sourceSets.main.allJava } 
+	options.addStringOption("overview", "overview.md")
+	inputs.file "overview.md"
+	options.addBooleanOption("linksource", true)
+	options.stylesheetFile(file("stylesheet.css"))
+    options.addStringOption("bottom", file("misc/javadoc.bottom.txt").text)
+    options.addStringOption("link", "http://docs.oracle.com/javase/8/docs/api/")
+	destinationDir = file("../jgrapes.gh-pages/javadoc")
+}

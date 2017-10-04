@@ -24,7 +24,7 @@ Provide-Capability: osgi.serviceloader; \
     uses:="org.jgrapes.portal"
 
 Export-Package: \
-    org.jgrapes.portal.themes.*
+    !org.jgrapes.portal.themes.base.*,org.jgrapes.portal.themes.*
     
 -includeresource: resources
 

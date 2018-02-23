@@ -10,11 +10,9 @@ class ConfigurePublishing implements Plugin<Project> {
 	void apply(Project project) {
 
 		project.extensions.create("configurePublishing", ConfigurePublishingExtension)
-				
+
 		if (project.hasProperty("signing.keyId")) {
-			project.signing.sign(project.tasks.jar)
-			project.signing.sign(project.tasks.sourcesJar)
-			project.signing.sign(project.tasks.javadocJar)
+			project.signing.sign(project.configurations.archives)
 		}
 
 		project.publishing {
@@ -22,8 +20,12 @@ class ConfigurePublishing implements Plugin<Project> {
 				mavenJava(MavenPublication) {
 					artifactId = project.archivesBaseName
 					from(project.components.java)
-					artifact(project.tasks.sourcesJar)
-					artifact(project.tasks.javadocJar)
+					artifact(project.tasks.sourcesJar) {
+						classifier = 'sources'
+					}
+					artifact(project.tasks.javadocJar) {
+						classifier = 'javadoc'
+					}
 					pom.packaging = "jar"
 					
 					// Until https://github.com/gradle/gradle/issues/1232 is fixed:
@@ -46,7 +48,11 @@ class ConfigurePublishing implements Plugin<Project> {
 							asNode().dependencies.first().each {
 								def groupId = it.get("groupId").first().value().first()
 								def artifactId = it.get("artifactId").first().value().first()
-								it.get("version").first().value = resolvedVersionMap.get("${groupId}:${artifactId}")
+								def version = it.get("version").first().value()[0];
+								// Leave Maven version ranges alone.
+								if (!version.startsWith('(') && !version.startsWith('[')) {
+									it.get("version").first().value = resolvedVersionMap.get("${groupId}:${artifactId}")
+								}
 							}
 						}
 					}
@@ -65,19 +71,16 @@ class ConfigurePublishing implements Plugin<Project> {
 					pom.withXml(project.configurePublishing.withPomXml)
 					
 					if (project.hasProperty("signing.keyId")) {
-						// Add signature files
-						[project.tasks.signJar, project.tasks.signSourcesJar,
-							project.tasks.signJavadocJar].each {
-							it.signatureFiles.each {
-								artifact(it) {
-									def matcher = it.file =~ /-(sources|javadoc)\.jar\.asc$/
-									if (matcher.find()) {
-										classifier = matcher.group(1)
-									} else {
-										classifier = null
-									}
-									extension = 'jar.asc'
+						// Add signature files to publication (see MavenPublication.artifact)
+						project.tasks.signArchives.signatureFiles.each {
+							artifact(it) {
+								def matcher = it.file =~ /-(sources|javadoc)\.jar\.asc$/
+								if (matcher.find()) {
+									classifier = matcher.group(1)
+								} else {
+									classifier = null
 								}
+								extension = 'jar.asc'
 							}
 						}
 	
@@ -99,20 +102,8 @@ class ConfigurePublishing implements Plugin<Project> {
 		
 		if (project.hasProperty("signing.keyId")) {
 			project.model {
-				tasks.publishMavenJavaPublicationToMavenLocal {
-					dependsOn(project.tasks.signJar)
-					dependsOn(project.tasks.signSourcesJar)
-					dependsOn(project.tasks.signJavadocJar)
-				}
-				tasks.publishMavenJavaPublicationToSnapshotRepository {
-					dependsOn(project.tasks.signJar)
-					dependsOn(project.tasks.signSourcesJar)
-					dependsOn(project.tasks.signJavadocJar)
-				}
 				tasks.publishMavenJavaPublicationToReleaseRepository {
-					dependsOn(project.tasks.signJar)
-					dependsOn(project.tasks.signSourcesJar)
-					dependsOn(project.tasks.signJavadocJar)
+					dependsOn(project.tasks.signArchives)
 				}
 			}
 		}

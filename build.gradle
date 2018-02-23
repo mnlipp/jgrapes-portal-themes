@@ -11,7 +11,7 @@ buildscript {
         maven { url 'https://jitpack.io' }
     }
     dependencies {
-        classpath 'biz.aQute.bnd:biz.aQute.bnd.gradle:3.3.0'
+        classpath 'biz.aQute.bnd:biz.aQute.bnd.gradle:3.5.0'
     }
 }
 
@@ -19,49 +19,85 @@ plugins {
 	id "maven-publish"
 	id "signing"
 	id "org.jdrupes.mdoclet" version "1.0.3"
+	id "com.moowork.node" version "1.2.0"
+	id 'org.ajoberstar.git-publish' version '0.4.0-rc.2'
 }
 
 ext {
 	isTravisBuild = System.getenv().get("TRAVIS") == 'true'
 }
 
+// Prepare github authentication for plugins
+if (System.properties['org.ajoberstar.grgit.auth.username'] == null) {
+	System.setProperty('org.ajoberstar.grgit.auth.username',
+		System.getenv("GH_TOKEN") ?: project.properties['github.token'] ?: "nouser")
+}
+
 allprojects {
     repositories {
         jcenter()
         mavenCentral()
-		maven { url "https://oss.sonatype.org/content/repositories/snapshots/" }
+        // Sometimes, synchronization with central is too slow
+        maven { url 'https://oss.sonatype.org/content/repositories/releases/' }
+        // Snapshots
+        maven { url "https://oss.sonatype.org/content/repositories/snapshots/" }
+        // Experimental, not sure if this is the way tpo go...
         maven { url 'https://jitpack.io' }
     }
 	
 	// Makes Eclipse-groovy handle *.gradle file properly
 	apply plugin:'groovy'
+
+	group = 'org.jgrapes'
+	
+	ext.releaseVersion = "0.9.6"
+	ext.isSnapshot = true
+	version = releaseVersion + (isSnapshot ? "-SNAPSHOT" : "")
 }
 
 subprojects {
 
-    apply plugin: 'biz.aQute.bnd.builder'
 	apply plugin: 'signing'
 	apply plugin: 'maven'
 	apply plugin: 'maven-publish'
-	
-    tasks.withType(Javadoc).all { enabled = false }
-
-	group = 'org.jgrapes'
+	apply plugin: 'org.jdrupes.mdoclet'
 	
 	if (project.file("bnd.bnd").exists()) {
-		// The builder plugin doesn't provide access to the bnd properties.
-		// Provide workaround as properties in extra bnd
-		new Processor().withCloseable { processor ->
-			processor.setProperties(project.file('bnd.bnd'))
-			ext.set("bnd", processor.getFlattenedProperties());
+
+		apply plugin: 'biz.aQute.bnd.builder'
+		
+		// Provide the Bundle-Version (shared by all libraries)
+		String bundleVersion = releaseVersion +
+			(isSnapshot ? ".-\${tstamp}-SNAPSHOT" : ".ga")
+		
+		jar {
+			manifest {
+				attributes('Bundle-Version': bundleVersion)
+			}
+		}
+
+		dependencies {
+			// Use gradle mechanims to get the artifact to baseline against.
+			// We baseline against the previous release 
+			// (latest excluding current)
+			baseline("${group}:${project.name}:(,${releaseVersion})") {
+				transitive false
+			}
 		}
 		
-		// Maintain the version in the bnd.bnd. Else, bndtools won't
-		// generate a proper Bundle-Version header for incrementally 
-		// built jars.
-		version = bnd.base_version + "-SNAPSHOT"
+		if (project.name.startsWith("org.jgrapes.portal.themes.")) {
+			dependencies {
+				compile 'org.jgrapes:org.jgrapes.portal:[0.9.6-SNAPSHOT,)'
+			}
+			
+			jar {
+				into('META-INF') {
+					from 'resources/META-INF'
+				}
+			}
+		}
 	}
-
+	
     dependencies {
         compileOnly 'org.osgi:org.osgi.annotation:6.0.0'
         testCompile 'junit:junit:4.12', 'net.jodah:concurrentunit:0.4.2'
@@ -87,7 +123,7 @@ subprojects {
 				srcDir 'test'
 			}
             resources {
-                srcDir 'resources'
+                srcDir 'test-resources'
             }
         }
     }
@@ -114,27 +150,23 @@ subprojects {
         }
     }
 
-	jar {
-		// This shouldn't be necessary, but with gradle 4.1, it is.
-		version project.version
-    }
-
 	// Additional jars for publishing
-		
+
 	task sourcesJar(type: Jar) {
 		from sourceSets.main.allJava
 		classifier "sources"
-		// This shouldn't be necessary, but with gradle 4.1, it is.
-		version project.version
 	}
 	
-	task javadocJar(type: Jar) {
-		from (project.rootDir) {
-			include 'README.md'
+	if (project.name != "org.jgrapes.portal") {
+		task javadocJar(type: Jar) {
+			from ("${project.rootDir}/misc/javadoc-redirect")
+			classifier "javadoc"
 		}
-		classifier "javadoc"
-		// This shouldn't be necessary, but with gradle 4.1, it is.
-		version project.version
+	
+		artifacts {
+			archives sourcesJar
+			archives javadocJar
+		}
 	}
 	
 	// MavenPublishing (new)
@@ -169,9 +201,9 @@ subprojects {
 			asNode().with {
 				appendNode('url', 'http://mnlipp.github.io/jgrapes/')
 				appendNode('scm').with {
-					appendNode('url', 'scm:git@github.com:mnlipp/jgrapes-portal-themes.git')
-					appendNode('connection', 'scm:git@github.com:mnlipp/jgrapes-portal-themes.git')
-					appendNode('developerConnection', 'git@github.com:mnlipp/jgrapes-portal-themes.git')
+					appendNode('url', 'scm:git@github.com:mnlipp/jgrapes.git')
+					appendNode('connection', 'scm:git@github.com:mnlipp/jgrapes.git')
+					appendNode('developerConnection', 'git@github.com:mnlipp/jgrapes.git')
 				}
 				appendNode('licenses').with {
 					appendNode('license').with {
@@ -189,16 +221,41 @@ subprojects {
 			}
 		}
 	}
-
+	
 	afterEvaluate {
 		if(!project.name.startsWith("org.jgrapes")) {
-			tasks.matching { it.group == "upload" ||
-				it.group == "publishing" }.all {
+			tasks.matching { it.group == "publishing" }.all {
+				enabled = false
+			}
+			tasks.matching { it.name == "baseline" }.all {
 				enabled = false
 			}
 		}
 	}
 	
+    apply plugin: 'eclipse'
+    
+    eclipse {
+        classpath {
+            // 'org.eclipse.buildship.core.gradleclasspathcontainer',
+            // containers 'aQute.bnd.classpath.container'
+            downloadJavadoc = true
+            downloadSources = true
+        }
+        project {
+			// buildCommand 'bndtools.core.bndbuilder'
+			buildCommand 'org.eclipse.jdt.core.javabuilder'
+            // buildCommand 'org.eclipse.buildship.core.gradleprojectbuilder'
+            // buildCommand 'bndtools.core.bndbuilder'
+            buildCommand 'net.sf.eclipsecs.core.CheckstyleBuilder'
+            // 'org.eclipse.buildship.core.gradleprojectnature',
+            natures 'org.eclipse.jdt.core.javanature', \
+                'bndtools.core.bndnature', \
+                'net.sf.eclipsecs.core.CheckstyleNature'
+				'org.eclipse.jdt.groovy.core.groovyNature'
+        }
+    }
+    tasks.eclipse.dependsOn(cleanEclipse)
 }
 
 configurations {
@@ -210,19 +267,34 @@ dependencies {
     // javadocTaglets "com.github.mnlipp:jdrupes-taglets:master-SNAPSHOT"
 }
 
-javadoc {
-
-    options.tagletPath = configurations.javadocTaglets.files as List
-    options.taglets = ["org.jdrupes.taglets.plantUml.Taglet"]
-
-    classpath = files(subprojects.collect {project -> 
-        project.sourceSets.main.compileClasspath})
-    source subprojects.collect {project -> project.sourceSets.main.allJava } 
-	options.addStringOption("overview", "overview.md")
-	inputs.file "overview.md"
-	options.addBooleanOption("linksource", true)
-	options.stylesheetFile(file("stylesheet.css"))
-    options.addStringOption("bottom", file("misc/javadoc.bottom.txt").text)
-    options.addStringOption("link", "http://docs.oracle.com/javase/8/docs/api/")
-	destinationDir = file("../jgrapes.gh-pages/javadoc")
+gitPublish {
+	repoUri = 'https://github.com/mnlipp/jgrapes.git'
+	branch = 'gh-pages'
+	contents {
+		from("${buildDir}/javadoc") {
+			into 'javadoc-portal'
+		}
+	}
+	preserve { include '**/*' }
+	commitMessage = "Updated."
 }
+
+// Until https://github.com/ajoberstar/gradle-git-publish/issues/41 is fixed
+tasks.gitPublishCopy.dependsOn(":org.jgrapes.portal:javadoc")
+tasks.gitPublishCopy.dependsOn(":org.jgrapes.portal:documentationjs")
+
+task stage {
+	// Build everything first
+	subprojects.tasks.each { tc -> dependsOn tc.findByName("build") }
+	// Publish JavaDoc
+	dependsOn gitPublishPush	
+}
+
+configure(stage) {
+	description = 'To be executed by travis, build and update JavaDoc.'
+	group = 'build'
+}
+
+apply plugin: 'eclipse'
+
+tasks.eclipse.dependsOn(cleanEclipse)

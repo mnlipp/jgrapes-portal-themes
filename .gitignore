@@ -3,5 +3,5 @@
 .recommenders/
 /cnf/
 /build/
-**/.classpath
 **/.project
+**/.classpath

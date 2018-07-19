@@ -18,7 +18,7 @@
 
 package org.jgrapes.portal.themes.lefrog;
 
-import org.jgrapes.portal.ThemeProvider;
+import org.jgrapes.portal.jqueryui.ThemeProvider;
 
 /**
  * 

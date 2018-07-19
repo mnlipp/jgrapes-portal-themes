@@ -50,7 +50,7 @@ allprojects {
 
 	group = 'org.jgrapes'
 	
-	ext.releaseVersion = "0.9.6"
+	ext.releaseVersion = "0.10.0"
 	ext.isSnapshot = true
 	version = releaseVersion + (isSnapshot ? "-SNAPSHOT" : "")
 }
@@ -87,7 +87,7 @@ subprojects {
 		
 		if (project.name.startsWith("org.jgrapes.portal.themes.")) {
 			dependencies {
-				compile 'org.jgrapes:org.jgrapes.portal:[0.9.6-SNAPSHOT,)'
+				compile 'org.jgrapes:org.jgrapes.portal.jqueryui:[0.18.0-SNAPSHOT,)'
 			}
 			
 			jar {

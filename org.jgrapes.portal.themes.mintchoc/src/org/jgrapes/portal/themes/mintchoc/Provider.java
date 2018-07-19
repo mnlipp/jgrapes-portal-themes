@@ -18,7 +18,7 @@
 
 package org.jgrapes.portal.themes.mintchoc;
 
-import org.jgrapes.portal.ThemeProvider;
+import org.jgrapes.portal.jqueryui.ThemeProvider;
 
 /**
  * 

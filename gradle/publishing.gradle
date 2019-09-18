@@ -112,7 +112,6 @@ task releaseToBintray {
     group = "publishing"
     
     dependsOn "releaseTag"
-    dependsOn "build"
     dependsOn "bintrayUpload"
 }
 

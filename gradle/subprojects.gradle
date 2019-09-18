@@ -24,14 +24,12 @@ if (project.file("bnd.bnd").exists()) {
         (isSnapshot ? '.-\${tstamp}-SNAPSHOT' : '.ga') }"""
 
     jar {
-		inputs.property("gitDescription", grgit.describe())
-		inputs.property("gitHash", grgit.head().id)
-		
-        manifest {
-            attributes('Bundle-Version': bundleVersion)
-			attributes('Bundle-Copyright': 'Michael N. Lipp (c) 2017, 2019')
-			attributes('Bundle-License': 'https://www.gnu.org/licenses/agpl-3.0.en.html')
-        }
+		// Set Git revision information in the manifests of built bundles
+		bnd ('Bundle-Version': bundleVersion,
+			 'Bundle-Copyright': 'Michael N. Lipp (c) 2017, 2019',
+			 'Bundle-License': 'https://www.gnu.org/licenses/agpl-3.0.en.html',
+			 'Git-Descriptor': grgit.describe(),
+			 'Git-SHA': grgit.head().id)
     }
 
 	if (project.name.startsWith("org.jgrapes.portal.jqueryui.themes.")) {

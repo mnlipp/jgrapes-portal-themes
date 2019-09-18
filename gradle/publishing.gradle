@@ -92,7 +92,7 @@ bintray {
 
 afterEvaluate {
     bintray.pkg.version.name = project.version
-//    bintrayUpload.dependson "build"
+	bintrayUpload.dependsOn "build"
 }
 
 task releaseTag {

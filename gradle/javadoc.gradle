@@ -1,0 +1,8 @@
+task javadocJar(type: Jar) {
+    from ("${project.rootDir}/misc/javadoc-redirect")
+    classifier "javadoc"
+}
+    
+artifacts {
+    archives javadocJar
+}

@@ -1,0 +1,109 @@
+import org.gradle.api.tasks.testing.logging.TestExceptionFormat
+import org.gradle.api.tasks.testing.logging.TestLogEvent
+
+apply plugin: 'signing'
+apply plugin: 'maven'
+apply plugin: 'maven-publish'
+apply plugin: 'org.jdrupes.mdoclet'
+    
+if (project.file("bnd.bnd").exists()) {
+
+    compileJava {
+        sourceCompatibility = 1.8
+        targetCompatibility = 1.8
+    }
+	
+    apply plugin: 'biz.aQute.bnd.builder'
+
+    // Defaults, can be overridden in subproject's build.gradle
+    ext.releaseVersion = "0.19.0"
+    ext.isSnapshot = true
+    
+    // Provide the Bundle-Version (derive from project version)
+    ext.bundleVersion = """${ -> releaseVersion +
+        (isSnapshot ? '.-\${tstamp}-SNAPSHOT' : '.ga') }"""
+
+    jar {
+		inputs.property("gitDescription", grgit.describe())
+		inputs.property("gitHash", grgit.head().id)
+		
+        manifest {
+            attributes('Bundle-Version': bundleVersion)
+			attributes('Bundle-Copyright': 'Michael N. Lipp (c) 2017, 2019')
+			attributes('Bundle-License': 'https://www.gnu.org/licenses/agpl-3.0.en.html')
+        }
+    }
+
+	if (project.name.startsWith("org.jgrapes.portal.jqueryui.themes.")) {
+		dependencies {
+			compile 'org.jgrapes:org.jgrapes.portal.jqueryui:[0.27.0,)'
+		}
+			
+		jar {
+			into('META-INF') {
+				from 'resources/META-INF'
+			}
+		}
+	}
+	
+    dependencies {
+        compileOnly 'org.osgi:org.osgi.annotation:6.0.0'
+        testCompile 'junit:junit:4.12', 'net.jodah:concurrentunit:0.4.2'
+		testCompile "org.spockframework:spock-core:1.1-groovy-2.4-rc-3"
+    }
+
+}
+
+jar {
+    manifest {
+        attributes([
+            "Git-Descriptor": grgit.describe(),
+            "Git-SHA": grgit.head().id
+        ])
+    }
+}
+
+apply from: "${project.rootDir}/gradle/layout.gradle"
+
+if (project.name.startsWith("org.jgrapes.")) {
+    tasks.compileJava {
+        if (!JavaVersion.current().isJava8()) {
+            options.compilerArgs.addAll(['--release', '8'])
+        }
+    }
+}
+
+test {
+//    if (!rootProject.isTravisBuild) {
+//        jvmArgs '-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=18888'
+//    }
+
+    testLogging {
+        events TestLogEvent.FAILED,
+               TestLogEvent.SKIPPED,
+               TestLogEvent.PASSED,
+               TestLogEvent.STANDARD_ERROR,
+               TestLogEvent.STANDARD_OUT
+
+        exceptionFormat TestExceptionFormat.FULL
+
+        showStandardStreams = true
+        showExceptions = true
+        showStackTraces = true
+        showCauses = true
+    }
+        
+    if (isTravisBuild) {
+        maxParallelForks = 2
+        maxHeapSize = '768m'
+    }
+}
+
+if (project.name.startsWith("org.jgrapes.")) {
+    apply from: "${project.rootDir}/gradle/javadoc.gradle"
+    apply from: "${project.rootDir}/gradle/publishing.gradle"
+    apply from: "${project.rootDir}/gradle/baseline.gradle"
+}
+
+apply from: "${project.rootDir}/gradle/eclipse.gradle"
+

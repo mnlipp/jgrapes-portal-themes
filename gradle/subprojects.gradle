@@ -15,10 +15,6 @@ if (project.file("bnd.bnd").exists()) {
 	
     apply plugin: 'biz.aQute.bnd.builder'
 
-    // Defaults, can be overridden in subproject's build.gradle
-    ext.releaseVersion = "0.19.0"
-    ext.isSnapshot = true
-    
     // Provide the Bundle-Version (derive from project version)
     ext.bundleVersion = """${ -> releaseVersion +
         (isSnapshot ? '.-\${tstamp}-SNAPSHOT' : '.ga') }"""

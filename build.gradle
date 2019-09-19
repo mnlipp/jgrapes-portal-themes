@@ -52,12 +52,14 @@ allprojects {
 
 	group = 'org.jgrapes'
 	
-	ext.releaseVersion = "0.19.0"
-	ext.isSnapshot = false
-	version = releaseVersion + (isSnapshot ? "-SNAPSHOT" : "")
 }
 
 subprojects {
+    // Defaults, can be overridden in subproject's build.gradle
+    ext.releaseVersion = "0.19.1"
+    ext.isSnapshot = true
+	version = releaseVersion + (isSnapshot ? "-SNAPSHOT" : "")
+	
 	apply from: "${project.rootDir}/gradle/subprojects.gradle"
 }
 	
